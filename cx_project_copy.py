@@ -8,7 +8,7 @@ source_url = "http://172.35.1.46"
 #source_username = input('Source Username:')
 source_username = "admin@cx"
 #source_password = getpass.getpass('Source Password:')
-source_password = "H#c2iN36M!"
+source_password = ""
 
 # TODO: make these parameters?
 ######## What to Update ? - Config ########
