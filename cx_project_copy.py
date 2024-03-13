@@ -59,6 +59,151 @@ def get_token(server, username, password) :
     token = json.loads(response.text)
     return token["token_type"] + " " + token["access_token"]
 
+######## Get Headers ########
+def get_headers(token, action):
+    return {
+        "Authorization": token,
+        "SOAPAction": f"{actionPrefix}/{action}",
+        "Content-Type": contentType,
+    }
+
+######## Get Projects with Scans - Last Scan ########
+def get_last_scan(url, token, projectId):
+    print(f"getLastScan: projectId: ${projectId}")
+
+    payload = openSoapEnvelope + """<GetScansDisplayData xmlns="http://Checkmarx.com">
+                      <sessionID></sessionID>
+                      <projectID>""" + projectId + """</projectID>
+                    </GetScansDisplayData>""" + closeSoapEnvelope
+
+    headers = get_headers(token, "GetScansDisplayData")
+
+    response = requests.post(url, data=payload, headers=headers)
+    #[xml]$res = (Invoke-WebRequest $url -Method POST -Body $payload -Headers $headers)
+
+    $res1 = $res.Envelope.Body.GetScansDisplayDataResponse.GetScansDisplayDataResult
+
+    if ($res1.IsSuccesfull -and $res1.ScanList.ScanDisplayData.ChildNodes.Count -gt 0){
+        if (-not $res1.ScanList.ScanDisplayData[0]) {
+            return $res1.ScanList.ScanDisplayData
+        } else {
+            return $res1.ScanList.ScanDisplayData[0]
+        }
+    } else {
+        Write-Host "Failed to get Projects: " $res1.ErrorMessage
+        Write-Host ($res1| ConvertTo-Json)
+        throw "getLastScan: " + $res1.ErrorMessage
+    }
+
+
+######## Get Results for a Scan ########
+function getResults($url, $token, $scanId) {
+    Write-Host "getResults: scanId: ${scanId}"
+
+    $payload = $openSoapEnvelope +'<GetResultsForScan xmlns="http://Checkmarx.com">
+                      <sessionID></sessionID>
+                      <scanId>' + $scanId + '</scanId>
+                    </GetResultsForScan>' + $closeSoapEnvelope
+
+    $headers = getHeaders $token "GetResultsForScan"
+
+    [xml]$res = (Invoke-WebRequest $url -Method POST -Body $payload -Headers $headers)
+
+    $res1 = $res.Envelope.Body.GetResultsForScanResponse.GetResultsForScanResult
+
+    if ($res1.IsSuccesfull) {
+        return $res1.Results.ChildNodes
+    } else {
+        Write-Host "Failed to get Results: " $res1.ErrorMessage
+        throw "getResults: " + $res1.ErrorMessage
+    }
+}
+
+######## Get Queries for a Scan ########
+function getQueries($url, $token, $scanId) {
+    Write-Host "getQueries: scanId: ${scanId}"
+
+    $payload = $openSoapEnvelope +'<GetQueriesForScan xmlns="http://Checkmarx.com">
+                      <sessionID></sessionID>
+                      <scanId>' + $scanId + '</scanId>
+                    </GetQueriesForScan>' + $closeSoapEnvelope
+
+    $headers = getHeaders $token "GetQueriesForScan"
+
+    [xml]$res = (Invoke-WebRequest $url -Method POST -Body $payload -Headers $headers)
+
+    $res1 = $res.Envelope.Body.GetQueriesForScanResponse.GetQueriesForScanResult
+
+    if ($res1.IsSuccesfull) {
+        return $res1.Queries.ChildNodes
+    } else {
+        Write-Host "Failed to get Queries for Scan ID ${scanId}:" $res1.ErrorMessage
+        throw "getQueries: " + $res1.ErrorMessage
+    }
+}
+
+######## Get Comments for a result ########
+function getComments($url, $token, $scanId, $pathId) {
+    Write-Host "getComments: scanId: ${scanId}, pathId: ${pathId}"
+
+    $payload = $openSoapEnvelope +'<GetPathCommentsHistory xmlns="http://Checkmarx.com">
+                      <sessionId></sessionId>
+                      <scanId>' + $scanId + '</scanId>
+                      <pathId>' + $pathId + '</pathId>
+                      <labelType>Remark</labelType>
+                    </GetPathCommentsHistory>' + $closeSoapEnvelope
+    $headers = getHeaders $token "GetPathCommentsHistory"
+
+    [xml]$res = (Invoke-WebRequest $url -Method POST -Body $payload -Headers $headers)
+
+    $res1 = $res.Envelope.Body.GetPathCommentsHistoryResponse.GetPathCommentsHistoryResult
+
+    if ($res1.IsSuccesfull) {
+        return $res1.Path
+    } else {
+        Write-Host "Failed to get Results Comments: " $res1.ErrorMessage
+        throw "getComments: " + $res1.ErrorMessage
+    }
+}
+
+######## Get Query From List by ID ########
+function getQuery($queryList, $queryId) {
+    for ($i=0; $i -lt $queryList.Length; $i++) {
+        $q = $queryList[$i]
+        if ($q.QueryId -eq $queryId) {
+            return $q
+        }
+    }
+    throw "Unable to get Query ${queryId}"
+}
+
+######## Check Queries are the same ########
+function isEqualQuery($queriesSource, $queriesDest, $queryIdSource, $queryIdDest) {
+
+    $sourceQuery = getQuery $queriesSource $queryIdSource
+    $destQuery = getQuery $queriesDest $queryIdDest
+
+    return $sourceQuery.LanguageName -eq $destQuery.LanguageName -and $sourceQuery.QueryName -eq $destQuery.QueryName
+}
+
+######## Remove Accents From Strings ########
+function RemoveDiacritics([System.String] $text) {
+    $regex = "[^a-zA-Z0-9='|/!(){}\s:-_;,]"
+    if ([System.String]::IsNullOrEmpty($text)) {
+        return $text -replace $regex, "_"
+    }
+    $normalized = $text.Normalize([System.Text.NormalizationForm]::FormD)
+    $newString = New-Object -TypeName System.Text.StringBuilder
+
+    $normalized.ToCharArray() | ForEach{
+        if ([Globalization.CharUnicodeInfo]::GetUnicodeCategory($psitem) -ne [Globalization.UnicodeCategory]::NonSpacingMark) {
+            [void]$newString.Append($psitem)
+        }
+    }
+    return $newString.ToString() -replace $regex, "_"
+}
+
+
 def main():
     srcToken = get_token(source_url, source_username, source_password)
 
