@@ -2,6 +2,7 @@ import requests
 import getpass
 import os
 import json
+import sys 
 
 #source_url = input('Source Url:')
 source_url = "http://172.35.1.46"
@@ -97,17 +98,17 @@ def get_last_scan(url, token, projectId):
 
 
 ######## Get Results for a Scan ########
-function getResults($url, $token, $scanId) {
-    Write-Host "getResults: scanId: ${scanId}"
+def get_results(url, token, scanId):
+    print(f"getResults: scanId: {scanId}")
 
-    $payload = $openSoapEnvelope +'<GetResultsForScan xmlns="http://Checkmarx.com">
+    payload = openSoapEnvelope +"""<GetResultsForScan xmlns="http://Checkmarx.com">
                       <sessionID></sessionID>
-                      <scanId>' + $scanId + '</scanId>
-                    </GetResultsForScan>' + $closeSoapEnvelope
+                      <scanId>""" + scanId + """</scanId>
+                    </GetResultsForScan>""" + closeSoapEnvelope
 
-    $headers = getHeaders $token "GetResultsForScan"
+    headers = get_headers(token, "GetResultsForScan")
 
-    [xml]$res = (Invoke-WebRequest $url -Method POST -Body $payload -Headers $headers)
+    response = requests.post(url, data=payload, headers=headers)
 
     $res1 = $res.Envelope.Body.GetResultsForScanResponse.GetResultsForScanResult
 
@@ -117,20 +118,20 @@ function getResults($url, $token, $scanId) {
         Write-Host "Failed to get Results: " $res1.ErrorMessage
         throw "getResults: " + $res1.ErrorMessage
     }
-}
+
 
 ######## Get Queries for a Scan ########
-function getQueries($url, $token, $scanId) {
-    Write-Host "getQueries: scanId: ${scanId}"
+def get_queries(url, token, scanId):
+    print(f"getQueries: scanId: {scanId}")
 
-    $payload = $openSoapEnvelope +'<GetQueriesForScan xmlns="http://Checkmarx.com">
+    payload = openSoapEnvelope +"""<GetQueriesForScan xmlns="http://Checkmarx.com">
                       <sessionID></sessionID>
-                      <scanId>' + $scanId + '</scanId>
-                    </GetQueriesForScan>' + $closeSoapEnvelope
+                      <scanId>""" + $scanId + """</scanId>
+                    </GetQueriesForScan>""" + $closeSoapEnvelope
 
-    $headers = getHeaders $token "GetQueriesForScan"
+    headers = get_headers(token, "GetQueriesForScan")
 
-    [xml]$res = (Invoke-WebRequest $url -Method POST -Body $payload -Headers $headers)
+    response = requests.post(url, data=payload, headers=headers)
 
     $res1 = $res.Envelope.Body.GetQueriesForScanResponse.GetQueriesForScanResult
 
@@ -140,18 +141,19 @@ function getQueries($url, $token, $scanId) {
         Write-Host "Failed to get Queries for Scan ID ${scanId}:" $res1.ErrorMessage
         throw "getQueries: " + $res1.ErrorMessage
     }
-}
+
 
 ######## Get Comments for a result ########
-function getComments($url, $token, $scanId, $pathId) {
+def get_comments($url, $token, $scanId, $pathId):
     Write-Host "getComments: scanId: ${scanId}, pathId: ${pathId}"
 
-    $payload = $openSoapEnvelope +'<GetPathCommentsHistory xmlns="http://Checkmarx.com">
+    payload = openSoapEnvelope +'<GetPathCommentsHistory xmlns="http://Checkmarx.com">
                       <sessionId></sessionId>
                       <scanId>' + $scanId + '</scanId>
                       <pathId>' + $pathId + '</pathId>
                       <labelType>Remark</labelType>
                     </GetPathCommentsHistory>' + $closeSoapEnvelope
+
     $headers = getHeaders $token "GetPathCommentsHistory"
 
     [xml]$res = (Invoke-WebRequest $url -Method POST -Body $payload -Headers $headers)
@@ -167,24 +169,22 @@ function getComments($url, $token, $scanId, $pathId) {
 }
 
 ######## Get Query From List by ID ########
-function getQuery($queryList, $queryId) {
+def get_query(queryList, queryId):
     for ($i=0; $i -lt $queryList.Length; $i++) {
         $q = $queryList[$i]
         if ($q.QueryId -eq $queryId) {
             return $q
         }
     }
-    throw "Unable to get Query ${queryId}"
-}
+    sys.exit(f"Unable to get Query {queryId}")
 
 ######## Check Queries are the same ########
-function isEqualQuery($queriesSource, $queriesDest, $queryIdSource, $queryIdDest) {
+def is_equal_query(queriesSource, queriesDest, queryIdSource, queryIdDest):
 
     $sourceQuery = getQuery $queriesSource $queryIdSource
     $destQuery = getQuery $queriesDest $queryIdDest
 
     return $sourceQuery.LanguageName -eq $destQuery.LanguageName -and $sourceQuery.QueryName -eq $destQuery.QueryName
-}
 
 ######## Remove Accents From Strings ########
 function RemoveDiacritics([System.String] $text) {
